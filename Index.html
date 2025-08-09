@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>OmniTool — The Most Complex Single-File GitHub Pages App</title>
+  <meta name="description" content="A massive single-file web app (HTML+JS+CSS) that demonstrates a suite of developer and creative tools — fully static and runnable on GitHub Pages." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔧</text></svg>">
+  <!-- CDN libs -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <!-- Minimal styles (Tailwind-like tokens but self-contained) -->
+  <style>
+    :root{--bg:#0f1724;--panel:#0b1220;--muted:#9aa4b2;--accent:#7c3aed;--glass: rgba(255,255,255,0.03);}*{box-sizing:border-box}html,body,#app{height:100%}body{margin:0;font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial;background:linear-gradient(180deg,#071027 0%,#081323 100%);color:#e6eef6}
+    .app{display:grid;grid-template-columns:300px 1fr;gap:12px;padding:14px;height:100vh}
+    .sidebar{background:var(--panel);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px}
+    .logo{display:flex;align-items:center;gap:8px;font-weight:700}
+    .nav{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+    .nav button{background:transparent;border:0;color:var(--muted);padding:10px;border-radius:8px;text-align:left;cursor:pointer}
+    .nav button.active{color:#fff;background:linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));box-shadow:0 1px 0 rgba(255,255,255,0.02) inset}
+    .main{display:flex;flex-direction:column;gap:12px}
+    .topbar{display:flex;justify-content:space-between;gap:12px;align-items:center}
+    .card{background:var(--glass);padding:12px;border-radius:12px;backdrop-filter: blur(6px)}
+    .cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    textarea{width:100%;min-height:160px;background:transparent;border:1px solid rgba(255,255,255,0.04);padding:12px;border-radius:8px;color:inherit}
+    input[type=file]{color:var(--muted)}
+    .btn{background:var(--accent);color:white;padding:8px 12px;border-radius:8px;border:0;cursor:pointer}
+    .small{font-size:13px;color:var(--muted)}
+    .footer{font-size:12px;color:var(--muted)}
+    .tools-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
+    .iframe-preview{width:100%;height:320px;border-radius:8px;border:1px solid rgba(255,255,255,0.04)}
+    .canvas-wrap{display:flex;flex-direction:column;gap:8px}
+    .kbd{background:rgba(0,0,0,0.25);padding:6px;border-radius:6px;color:var(--muted);font-family:monospace}
+    .chip{display:inline-block;padding:6px 8px;border-radius:999px;background:rgba(255,255,255,0.03);font-size:13px}
+    .error-banner{background:#58181c;color:#ffe4e6;padding:8px;border-radius:8px;margin-bottom:12px}
+  </style>
+</head>
+<body>
+  <div id="app" class="app">
+    <aside class="sidebar card">
+      <div class="logo"><div style="font-size:20px">🔧</div><div>OmniTool</div></div>
+      <div class="small">Single-file demo — drop into GitHub Pages as <span class="kbd">index.html</span></div>
+      <nav class="nav" id="nav"></nav>
+      <div style="margin-top:auto;display:flex;flex-direction:column;gap:8px">
+        <div class="small">Theme <span id="themeName">Dark</span></div>
+        <div style="display:flex;gap:8px">
+          <button id="toggleTheme" class="btn">Toggle Theme</button>
+          <button id="exportAll" class="btn" title="Exports workspace JSON">Export</button>
+        </div>
+        <div class="footer">Made for GH Pages — no server required.</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div style="display:flex;gap:12px;align-items:center">
+          <h2 id="title">Welcome to OmniTool</h2>
+          <div class="chip" id="currentToolChip">Dashboard</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="search" placeholder="Quick open... (type tool name)" style="padding:8px;border-radius:8px;background:transparent;border:1px solid rgba(255,255,255,0.04);color:inherit"/>
+          <button id="helpBtn" class="btn">Help</button>
+        </div>
+      </div>
+
+      <section id="content" class="card" style="overflow:auto"> 
+        <!-- Content injected by JS -->
+      </section>
+
+      <div style="display:flex;justify-content:space-between;gap:12px">
+        <div class="small">Local workspace saves to <code>localStorage</code>. Use Export/Import to move between machines.</div>
+        <div class="small">Tip: press <span class="kbd">Ctrl+K</span> to open Quick open.</div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+  // Global safety: catch top-level errors and show a small banner in the UI
+  window.addEventListener('error', function(ev){
+    try{
+      const app = document.getElementById('app');
+      if(!app) return;
+      let banner = document.getElementById('omni_error_banner');
+      if(!banner){ banner = document.createElement('div'); banner.id = 'omni_error_banner'; banner.className = 'error-banner'; app.prepend(banner); }
+      banner.textContent = 'An error occurred: ' + (ev && ev.message ? ev.message : 'unknown');
+      console.error(ev.error || ev.message, ev.filename, ev.lineno);
+    }catch(e){ console.error('Error showing banner', e); }
+  });
+
+  // ========= Minimal app shell =========
+  const TOOLS = [
+    {id:'dashboard',name:'Dashboard'},
+    {id:'md',name:'Markdown Editor'},
+    {id:'sandbox',name:'Code Sandbox'},
+    {id:'image',name:'Image Editor'},
+    {id:'qr',name:'QR Generator'},
+    {id:'json',name:'JSON Formatter'},
+    {id:'b64',name:'Base64 Tools'},
+    {id:'audio',name:'Audio Visualizer'},
+    {id:'chart',name:'Chart Playground'},
+    {id:'terminal',name:'Terminal Emulator'}
+  ];
+
+  const nav = document.getElementById('nav');
+  const content = document.getElementById('content');
+  const title = document.getElementById('title');
+  const currentChip = document.getElementById('currentToolChip');
+  const search = document.getElementById('search');
+
+  function el(tag,opts={}){ const e=document.createElement(tag); Object.assign(e,opts); return e }
+
+  function makeNav(){
+    nav.innerHTML='';
+    for(const t of TOOLS){
+      const btn = document.createElement('button'); btn.textContent = t.name; btn.dataset.id=t.id;
+      btn.onclick = ()=>openTool(t.id);
+      nav.appendChild(btn);
+    }
+  }
+  makeNav();
+
+  function setActiveNav(id){
+    for(const b of nav.querySelectorAll('button')) b.classList.toggle('active', b.dataset.id===id);
+  }
+
+  // ========= Workspace persistence (robust parsing) =========
+  const WORK_KEY = 'omnitool_workspace_v1';
+  let WORK = {};
+  try{
+    const raw = localStorage.getItem(WORK_KEY);
+    if(raw){
+      try{ WORK = JSON.parse(raw); }
+      catch(parseErr){
+        console.warn('Corrupt workspace JSON in localStorage — resetting workspace.', parseErr);
+        WORK = {};
+        // remove corrupted value to avoid repeated errors
+        try{ localStorage.removeItem(WORK_KEY); }catch(e){}
+      }
+    } else { WORK = {}; }
+  }catch(e){
+    console.warn('Error accessing localStorage for workspace — starting empty.', e);
+    WORK = {};
+  }
+
+  function saveWork(){
+    try{ localStorage.setItem(WORK_KEY, JSON.stringify(WORK)); }
+    catch(e){ console.warn('Failed to save workspace:', e); }
+  }
+
+  document.getElementById('exportAll').onclick = ()=>{
+    const blob = new Blob([JSON.stringify(WORK, null, 2)],{type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download='omni-workspace.json'; a.click(); URL.revokeObjectURL(url);
+  }
+
+  // Quick open (search)
+  if(search){
+    search.addEventListener('input', ()=>{
+      const q = search.value.toLowerCase().trim();
+      if(!q) return;
+      const found = TOOLS.find(t=>t.name.toLowerCase().includes(q)||t.id.includes(q));
+      if(found) openTool(found.id);
+    });
+    window.addEventListener('keydown', (e)=>{ if((e.ctrlKey||e.metaKey)&&e.key&&e.key.toLowerCase()==='k'){ e.preventDefault(); search.focus(); search.select(); } });
+  }
+
+  // ========= Tool renderers =========
+  function openTool(id){
+    const tool = TOOLS.find(t=>t.id===id) || {name:id};
+    setActiveNav(id);
+    title.textContent = tool.name;
+    currentChip.textContent = tool.name;
+    content.innerHTML = '';
+    switch(id){
+      case 'dashboard': return renderDashboard();
+      case 'md': return renderMarkdown();
+      case 'sandbox': return renderSandbox();
+      case 'image': return renderImageEditor();
+      case 'qr': return renderQR();
+      case 'json': return renderJSON();
+      case 'b64': return renderB64();
+      case 'audio': return renderAudioVis();
+      case 'chart': return renderChartPlay();
+      case 'terminal': return renderTerminal();
+      default: content.textContent = 'Tool not found: ' + id;
+    }
+  }
+
+  // --- Dashboard ---
+  function renderDashboard(){
+    const wrap = el('div');
+    wrap.innerHTML = '\n      <h3>Dashboard</h3>\n      <div class="cols">\n        <div class="card">\n          <h4>Quick actions</h4>\n          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">\n            <button class="btn" id="openMd">Open MD Editor</button>\n            <button class="btn" id="openSb">Open Sandbox</button>\n            <button class="btn" id="openImg">Image Editor</button>\n            <button class="btn" id="openQr">QR Generator</button>\n          </div>\n        </div>\n        <div class="card">\n          <h4>Workspace</h4>\n          <pre id="wsDump" style="white-space:pre-wrap;max-height:180px;overflow:auto;background:transparent;border-radius:8px;padding:8px"></pre>\n        </div>\n      </div>\n    ';
+    content.appendChild(wrap);
+    document.getElementById('wsDump').textContent = JSON.stringify(WORK, null, 2);
+    document.getElementById('openMd').onclick = ()=>openTool('md');
+    document.getElementById('openSb').onclick = ()=>openTool('sandbox');
+    document.getElementById('openImg').onclick = ()=>openTool('image');
+    document.getElementById('openQr').onclick = ()=>openTool('qr');
+  }
+
+  // --- Markdown Editor ---
+  function renderMarkdown(){
+    const wrap = el('div');
+    const md = (WORK && WORK.md) ? WORK.md : '# Welcome to Markdown Editor\n\nStart typing on the left. Supports **GitHub-flavored** markdown via marked.js';
+    wrap.innerHTML = '<div class="cols"><div class="card"><h4>Editor</h4><textarea id="mdIn"></textarea><div style="display:flex;gap:8px;margin-top:8px"><button id="mdSave" class="btn">Save</button><button id="mdExport" class="btn">Export HTML</button></div></div><div class="card"><h4>Preview</h4><div id="mdPreview" style="padding:8px;background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);border-radius:8px;min-height:240px"></div></div></div>';
+    content.appendChild(wrap);
+    const mdIn = document.getElementById('mdIn'); const mdPreview=document.getElementById('mdPreview');
+    mdIn.value = md; function update(){ try{ mdPreview.innerHTML = marked.parse(mdIn.value); }catch(e){ mdPreview.textContent = 'Error rendering markdown: '+e } }
+    mdIn.addEventListener('input', update); update();
+    document.getElementById('mdSave').onclick = ()=>{ WORK.md = mdIn.value; saveWork(); alert('Saved to workspace'); }
+    document.getElementById('mdExport').onclick = ()=>{
+      const html = '<!doctype html><meta charset="utf-8"><title>Export</title><style>body{font-family:Inter,system-ui;padding:20px;color:#0b1220}</style><div>' + marked.parse(mdIn.value) + '</div>';
+      const blob = new Blob([html],{type:'text/html'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='export.html'; a.click(); URL.revokeObjectURL(url);
+    }
+  }
+
+  // --- Code Sandbox ---
+  function renderSandbox(){
+    const wrap = el('div');
+    wrap.innerHTML = '<h3>Code Sandbox (HTML/CSS/JS)</h3>\n      <div style="display:flex;gap:12px">\n        <div style="flex:1"><textarea id="htmlSrc" placeholder="<!-- HTML -->"></textarea></div>\n        <div style="flex:1"><textarea id="cssSrc" placeholder="/* CSS */">body{font-family:Inter,system-ui;padding:10px}</textarea></div>\n        <div style="flex:1"><textarea id="jsSrc" placeholder="// JS">console.log(\'hi\')</textarea></div>\n      </div>\n      <div style="margin-top:8px;display:flex;gap:8px"><button id="runBtn" class="btn">Run</button><button id="saveSandbox" class="btn">Save</button><button id="exportSandbox" class="btn">Export ZIP</button></div>\n      <h4 style="margin-top:12px">Preview</h4>\n      <iframe id="preview" class="iframe-preview" sandbox="allow-scripts allow-forms"></iframe>';
+    content.appendChild(wrap);
+    const htmlSrc = document.getElementById('htmlSrc'), cssSrc=document.getElementById('cssSrc'), jsSrc=document.getElementById('jsSrc'), preview=document.getElementById('preview');
+    const saved = (WORK && WORK.sandbox) ? WORK.sandbox : {html:'<div id="app">Hello sandbox</div>',css:cssSrc.value,js:jsSrc.value};
+    htmlSrc.value = saved.html || '<div id="app">Hello sandbox</div>';
+    cssSrc.value = saved.css || 'body{font-family:Inter,system-ui;padding:10px}';
+    jsSrc.value = saved.js || "console.log('hi')";
+
+    function run(){
+      // IMPORTANT: avoid having the exact sequence </script> inside this outer <script> tag's source
+      // by building the inner page with a broken-up closing tag.
+      const innerScriptOpen = '<scr' + 'ipt>';
+      const innerScriptClose = '</scr' + 'ipt>';
+      const src = '<!doctype html><meta charset="utf-8"><style>' + cssSrc.value + '</style>' + htmlSrc.value + innerScriptOpen + jsSrc.value + innerScriptClose;
+      const url = URL.createObjectURL(new Blob([src],{type:'text/html'}));
+      preview.src = url;
+      // revoke after a short delay to allow iframe to load blob
+      setTimeout(()=>{ try{ URL.revokeObjectURL(url); }catch(e){} },3000);
+    }
+
+    document.getElementById('runBtn').onclick = run;
+    document.getElementById('saveSandbox').onclick = ()=>{ WORK.sandbox={html:htmlSrc.value,css:cssSrc.value,js:jsSrc.value}; saveWork(); alert('Sandbox saved') }
+    document.getElementById('exportSandbox').onclick = ()=>{
+      const manifest = '--- sandbox export ---\nindex.html:\n' + htmlSrc.value + '\nstyles.css:\n' + cssSrc.value + '\nscripts.js:\n' + jsSrc.value;
+      const blob = new Blob([manifest],{type:'text/plain'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='sandbox-files.txt'; a.click(); URL.revokeObjectURL(url);
+    }
+    run();
+  }
+
+  // --- Image Editor ---
+  function renderImageEditor(){
+    const wrap = el('div');
+    wrap.innerHTML = '<h3>Image Editor (Canvas)</h3>\n      <div class="cols"><div class="card"><input id="imgFile" type="file" accept="image/*"/><div style="margin-top:8px"><button id="applyGray" class="btn">Grayscale</button><button id="invert" class="btn">Invert</button><button id="resizeBtn" class="btn">Resize 50%</button><button id="downloadImg" class="btn">Download</button></div></div><div class="card canvas-wrap"><canvas id="imgCanvas" width=800 height=450 style="border-radius:8px;max-width:100%"></canvas></div></div>';
+    content.appendChild(wrap);
+    const input = document.getElementById('imgFile'), canvas=document.getElementById('imgCanvas');
+    const ctx = canvas.getContext('2d');
+    let img = new Image();
+    input.onchange = e=>{ const f=e.target.files[0]; if(!f) return; const url=URL.createObjectURL(f); img.onload=()=>{ canvas.width=img.width; canvas.height=img.height; ctx.drawImage(img,0,0); try{ URL.revokeObjectURL(url); }catch(e){} } ; img.src=url };
+    document.getElementById('applyGray').onclick = ()=>{
+      try{
+        const w=canvas.width,h=canvas.height; const d=ctx.getImageData(0,0,w,h); for(let i=0;i<d.data.length;i+=4){ const r=d.data[i],g=d.data[i+1],b=d.data[i+2]; const v=0.2126*r+0.7152*g+0.0722*b; d.data[i]=d.data[i+1]=d.data[i+2]=v } ctx.putImageData(d,0,0);
+      }catch(e){ alert('No image loaded or canvas unavailable'); }
+    }
+    document.getElementById('invert').onclick = ()=>{ try{ const w=canvas.width,h=canvas.height,d=ctx.getImageData(0,0,w,h); for(let i=0;i<d.data.length;i+=4){ d.data[i]=255-d.data[i]; d.data[i+1]=255-d.data[i+1]; d.data[i+2]=255-d.data[i+2]; } ctx.putImageData(d,0,0); }catch(e){ alert('No image loaded or canvas unavailable'); } }
+    document.getElementById('resizeBtn').onclick = ()=>{ try{ const w=canvas.width,h=canvas.height; const tmp=document.createElement('canvas'); tmp.width=Math.round(w*0.5); tmp.height=Math.round(h*0.5); tmp.getContext('2d').drawImage(canvas,0,0,tmp.width,tmp.height); canvas.width=tmp.width; canvas.height=tmp.height; ctx.drawImage(tmp,0,0); }catch(e){ alert('Resize failed'); } }
+    document.getElementById('downloadImg').onclick = ()=>{ try{ const url=canvas.toDataURL('image/png'); const a=document.createElement('a'); a.href=url; a.download='edited.png'; a.click(); }catch(e){ alert('Nothing to download'); } }
+  }
+
+  // --- QR Generator ---
+  function renderQR(){
+    const wrap = el('div');
+    wrap.innerHTML = '<h3>QR Generator</h3><div style="display:flex;gap:8px"><input id="qrText" placeholder="https://example.com" style="flex:1;padding:8px;border-radius:8px;background:transparent;border:1px solid rgba(255,255,255,0.04)"/><button id="genQR" class="btn">Generate</button></div><div style="margin-top:12px" id="qrOut"></div>';
+    content.appendChild(wrap);
+    document.getElementById('genQR').onclick = ()=>{
+      const t=document.getElementById('qrText').value||location.href; const out=document.getElementById('qrOut'); out.innerHTML=''; const c=document.createElement('canvas'); out.appendChild(c);
+      try{ QRCode.toCanvas(c,t,{width:320},(err)=>{ if(err) out.textContent='Error: '+err }) }catch(e){ out.textContent='QRCode library not available'; }
+    }
+  }
+
+  // --- JSON Formatter ---
+  function renderJSON(){
+    const wrap = el('div');
+    wrap.innerHTML = '<h3>JSON Formatter & Validator</h3><div class="cols"><div class="card"><textarea id="jsonIn" placeholder=\'{"hello": "world"}\'></textarea><div style="margin-top:8px;display:flex;gap:8px"><button id="fmtJson" class="btn">Format</button><button id="minJson" class="btn">Minify</button><button id="valJson" class="btn">Validate</button></div></div><div class="card"><h4>Output</h4><pre id="jsonOut" style="white-space:pre-wrap;max-height:320px;overflow:auto"></pre></div></div>';
+    content.appendChild(wrap);
+    const inEl=document.getElementById('jsonIn'), out=document.getElementById('jsonOut');
+    document.getElementById('fmtJson').onclick = ()=>{ try{ const v=JSON.parse(inEl.value); out.textContent = JSON.stringify(v,null,2); }catch(e){ out.textContent = 'Error: '+e } }
+    document.getElementById('minJson').onclick = ()=>{ try{ const v=JSON.parse(inEl.value); out.textContent = JSON.stringify(v); }catch(e){ out.textContent = 'Error: '+e } }
+    document.getElementById('valJson').onclick = ()=>{ try{ JSON.parse(inEl.value); out.textContent = 'Valid JSON ✅'; }catch(e){ out.textContent = 'Invalid JSON ❌\n'+e } }
+  }
+
+  // --- Base64 Tools ---
+  function renderB64(){
+    const wrap = el('div');
+    wrap.innerHTML = '<h3>Base64 Encoder / Decoder</h3><div class="cols"><div class="card"><h4>Text ↔ Base64</h4><textarea id="textIn"></textarea><div style="display:flex;gap:8px;margin-top:8px"><button id="toB64" class="btn">Encode</button><button id="fromB64" class="btn">Decode</button></div></div><div class="card"><h4>File → Base64 (image preview)</h4><input id="fileIn" type="file" accept="*/*"/><pre id="b64Out" style="max-height:240px;overflow:auto"></pre></div></div>';
+    content.appendChild(wrap);
+    document.getElementById('toB64').onclick = ()=>{ const t=document.getElementById('textIn').value; try{ document.getElementById('b64Out').textContent = btoa(unescape(encodeURIComponent(t))); }catch(e){ document.getElementById('b64Out').textContent = 'Encoding error: '+e } }
+    document.getElementById('fromB64').onclick = ()=>{ try{ const s=document.getElementById('textIn').value; document.getElementById('b64Out').textContent = decodeURIComponent(escape(atob(s))); }catch(e){ document.getElementById('b64Out').textContent = 'Decode error: '+e } }
+    document.getElementById('fileIn').onchange = async (e)=>{ try{ const f=e.target.files[0]; const buf = await f.arrayBuffer(); const b64 = arrayBufferToBase64(buf); document.getElementById('b64Out').textContent = b64; }catch(err){ document.getElementById('b64Out').textContent = 'File read error: '+err } }
+    function arrayBufferToBase64(buffer){ let binary=''; const bytes=new Uint8Array(buffer); const len=bytes.byteLength; for(let i=0;i<len;i++){ binary += String.fromCharCode(bytes[i]); } return btoa(binary); }
+  }
+
+  // --- Audio Visualizer ---
+  function renderAudioVis(){
+    const wrap = el('div');
+    wrap.innerHTML = '<h3>Audio Visualizer</h3><div style="display:flex;gap:8px;align-items:center"><input id="audioFile" type="file" accept="audio/*"/><button id="playAudio" class="btn">Play</button></div><canvas id="audioCanvas" width=800 height=200 style="max-width:100%"></canvas>';
+    content.appendChild(wrap);
+    const fileIn=document.getElementById('audioFile'), playBtn=document.getElementById('playAudio'), canvas=document.getElementById('audioCanvas'), ctx=canvas.getContext('2d');
+    let audioCtx,analyser,source,audioEl;
+    playBtn.onclick = async ()=>{
+      if(!fileIn.files[0]) return alert('Choose audio file');
+      if(audioEl) audioEl.pause();
+      const url=URL.createObjectURL(fileIn.files[0]); audioEl = new Audio(url); audioEl.controls=false; audioEl.play();
+      try{
+        if(!audioCtx) audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+        analyser=audioCtx.createAnalyser(); source=audioCtx.createMediaElementSource(audioEl); source.connect(analyser); analyser.connect(audioCtx.destination); analyser.fftSize=256; const bufferLength = analyser.frequencyBinCount; const data = new Uint8Array(bufferLength);
+        function draw(){ requestAnimationFrame(draw); analyser.getByteFrequencyData(data); ctx.fillStyle='rgba(0,0,0,0.05)'; ctx.fillRect(0,0,canvas.width,canvas.height); const barWidth = (canvas.width / bufferLength); for(let i=0;i<bufferLength;i++){ const v = data[i]/255; const h = v * canvas.height; ctx.fillStyle = 'rgba(124,58,237,'+(0.6+v*0.4)+')'; ctx.fillRect(i*barWidth,canvas.height-h,barWidth-1,h); } }
+        draw();
+      }catch(e){ alert('Audio visualizer unavailable: '+e); }
+    }
+  }
+
+  // --- Chart Playground ---
+  function renderChartPlay(){
+    const wrap = el('div');
+    wrap.innerHTML = '<h3>Chart Playground</h3><div style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><button id="randomChart" class="btn">Random Chart</button><button id="exportChart" class="btn">Export PNG</button></div><canvas id="chartCanvas" width=800 height=320></canvas>';
+    content.appendChild(wrap);
+    const ctx=document.getElementById('chartCanvas').getContext('2d'); let chart;
+    document.getElementById('randomChart').onclick = ()=>{
+      const labels = Array.from({length:8},(_,i)=>'P'+(i+1)); const data = labels.map(()=>Math.floor(Math.random()*100));
+      try{ if(chart) chart.destroy(); chart = new Chart(ctx,{type:'bar',data:{labels, datasets:[{label:'Random', data, backgroundColor:labels.map(()=>undefined)}]}, options:{responsive:true}}); }catch(e){ alert('Chart error: '+e); }
+    }
+    document.getElementById('exportChart').onclick = ()=>{ try{ const url=document.getElementById('chartCanvas').toDataURL('image/png'); const a=document.createElement('a'); a.href=url; a.download='chart.png'; a.click(); }catch(e){ alert('Export failed: '+e); } }
+  }
+
+  // --- Terminal Emulator (fake but useful) ---
+  function renderTerminal(){
+    const wrap = el('div');
+    wrap.innerHTML = '<h3>Terminal Emulator</h3><div style="background:#020617;border-radius:8px;padding:12px;color:#8ab4f8;font-family:monospace;min-height:240px;max-height:360px;overflow:auto" id="termOut"></div><div style="display:flex;gap:8px;margin-top:8px"><input id="termIn" placeholder="type commands: help, echo, date, clear, save" style="flex:1;padding:8px;border-radius:8px;background:transparent;border:1px solid rgba(255,255,255,0.04);color:inherit"/><button id="termRun" class="btn">Run</button></div>';
+    content.appendChild(wrap);
+    const out=document.getElementById('termOut'), inp=document.getElementById('termIn');
+    function write(t){ out.innerHTML += '<div>'+t+'</div>'; out.scrollTop = out.scrollHeight; }
+    document.getElementById('termRun').onclick = ()=>{ const v=inp.value.trim(); if(!v) return; write('<span style="color:#fff">$ '+v+'</span>'); const [cmd,...rest]=v.split(' ');
+      if(cmd==='help') write('help — commands: help, echo, date, clear, save');
+      else if(cmd==='echo') write(rest.join(' '));
+      else if(cmd==='date') write(new Date().toString());
+      else if(cmd==='clear') out.innerHTML='';
+      else if(cmd==='save'){ WORK.term = (WORK.term||'') + '\n' + rest.join(' '); saveWork(); write('Saved to workspace'); }
+      else write('Unknown command: '+cmd);
+    }
+  }
+
+  // ========== Theme toggle (light/dark) ==========
+  let theme = (function(){ try{ return localStorage.getItem('omni_theme') || 'dark'; }catch(e){ return 'dark'; } })();
+  function applyTheme(){ if(theme==='dark'){ document.documentElement.style.setProperty('--bg','#071027'); document.documentElement.style.setProperty('--panel','#0b1220'); const tn = document.getElementById('themeName'); if(tn) tn.textContent='Dark' } else { document.documentElement.style.setProperty('--bg','#f8fafc'); document.documentElement.style.setProperty('--panel','#ffffff'); const tn = document.getElementById('themeName'); if(tn) tn.textContent='Light' } }
+  const toggleThemeBtn = document.getElementById('toggleTheme'); if(toggleThemeBtn) toggleThemeBtn.onclick = ()=>{ theme = theme==='dark'?'light':'dark'; try{ localStorage.setItem('omni_theme',theme); }catch(e){}; applyTheme(); }
+  applyTheme();
+
+  // ========= Service worker registration via blob (simple offline caching) =========
+  try{
+    const swCode = "self.addEventListener('install',e=>{self.skipWaiting();e.waitUntil(caches.open('omni-cache-v1').then(c=>c.addAll(['/','/index.html'])))});self.addEventListener('fetch',e=>{e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request).catch(()=>caches.match('/'))))});";
+    const swBlob = new Blob([swCode],{type:'application/javascript'});
+    const swUrl = URL.createObjectURL(swBlob);
+    if('serviceWorker' in navigator){ navigator.serviceWorker.register(swUrl).catch(e=>console.warn('SW registration failed',e)); }
+  }catch(e){console.warn('sw err',e)}
+
+  // Open default
+  openTool('dashboard');
+
+  // Expose openTool for sandbox buttons
+  window.openTool = openTool;
+  </script>
+
+  <!-- PWA manifest (optional) -->
+  <!-- Keep the manifest minimal to avoid introducing parsing edge-cases in single-file setup -->
+  <link rel="manifest" href="data:application/manifest+json,{&quot;name&quot;:&quot;OmniTool&quot;,&quot;short_name&quot;:&quot;OmniTool&quot;,&quot;start_url&quot;:&quot;./index.html&quot;,&quot;display&quot;:&quot;standalone&quot;,&quot;icons&quot;:[]}" />
+
+</body>
+</html>
